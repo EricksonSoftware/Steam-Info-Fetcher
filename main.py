@@ -16,8 +16,6 @@ def main() -> None:
 	
 	changed_app_ids = {}
 	for date in dates:
-		if date < "2025/03/01":
-			continue
 		print(date)
 		sales_data = get_sales_for_date(date, "0")
 		for app_id in sales_data:
