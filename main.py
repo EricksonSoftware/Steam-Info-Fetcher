@@ -49,8 +49,6 @@ def fetch_sales() -> None:
 def fetch_reviews() -> None:
 	current_sales = get_current_sales()
 	current_reviews = get_current_reviews()
-	if not current_reviews:
-		current_reviews = {}
 	
 	for app_id in current_sales:
 		app_reviews = get_reviews_for_app(app_id)
@@ -124,7 +122,7 @@ def set_current_sales(data : dict[str, dict]) -> None:
 
 def get_current_reviews() -> dict[str, dict]: # (app_id -> {"total", "positive", "negative"})
 	try:
-		read_file_json("current_reviews.json")
+		return read_file_json("current_reviews.json")
 	except:
 		return {}
 
