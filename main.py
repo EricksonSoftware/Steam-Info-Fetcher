@@ -1,4 +1,5 @@
 import json
+import math
 import requests
 import schedule
 import time
@@ -10,7 +11,17 @@ GET_REVIEWS = "https://store.steampowered.com/appreviews/%s"
 NTFY_TOPIC_ENDPOINT = "https://ntfy.sh/your-topic-name-here"
 
 def post_message(message : str) -> None:
-	requests.post(NTFY_TOPIC_ENDPOINT, data=message.encode(encoding="utf-8"))
+	print("Sending message: '%s'" % (message))
+	response = requests.post(NTFY_TOPIC_ENDPOINT, data=message.encode(encoding="utf-8"))
+	if not response.ok:
+		print(response.status_code)
+
+def main() -> None:
+	try:
+		fetch_sales()
+		fetch_reviews()
+	except Exception as e:
+		print("Main exception: %s" % (str(e)))
 
 def fetch_sales() -> None:
 	current_sales = get_current_sales()
@@ -21,30 +32,47 @@ def fetch_sales() -> None:
 		print("No new sales")
 		return
 	
-	changed_app_ids = {}
+	initial_sales_metrics = get_sales_metrics(current_sales)
+	
 	for date in dates:
 		print(date)
-		sales_data = get_sales_for_date(date, "0")
-		for app_id in sales_data:
+		updated_sales_data = get_sales_for_date(date, "0")
+		for app_id in updated_sales_data:
 			if app_id not in current_sales:
 				current_sales[app_id] = {}
-			current_sales[app_id][date] = sales_data[app_id]
-			changed_app_ids[app_id] = True
+			if date not in current_sales[app_id] or current_sales[app_id][date]["gross_units"] != updated_sales_data[app_id]["gross_units"]:
+				current_sales[app_id][date] = updated_sales_data[app_id]
 	
+	updated_sales_metrics = get_sales_metrics(current_sales)
+
 	for app_id in current_sales:
-		total_units = 0
-		total_profit = 0.0
-		for date in current_sales[app_id]:
-			total_units += current_sales[app_id][date]["gross_units"]
-			total_profit += current_sales[app_id][date]["net_sales"]
-		
-		total_profit *= 0.7
-		if app_id in changed_app_ids:
-			message = "%s\nUnits: %d\nProfit: $%.2f" % (app_id, total_units, total_profit)
+		if app_id not in initial_sales_metrics:
+			initial_sales_count = 0
+		else:
+			initial_sales_count, initial_sales_profit = initial_sales_metrics[app_id]
+		updated_sales_count, updated_sales_profit = updated_sales_metrics[app_id]
+
+		if updated_sales_count != initial_sales_count:
+			actual_profit = math.floor(updated_sales_profit * 0.7)
+			sales_count_diff = updated_sales_count - initial_sales_count
+			diff_sign = "+" if sales_count_diff >= 0 else "-"
+			formatted_profit = "{:,}".format(actual_profit)
+			message = "%s\nUnits: %d (%s%d)\nProfit: $%s" % (app_id, updated_sales_count, diff_sign, sales_count_diff, formatted_profit)
 			post_message(message)
 	
 	set_current_sales(current_sales)
 	set_dates_watermark(new_watermark)
+
+def get_sales_metrics(sales_data : dict[str, dict]) -> dict[str, (int, float)]:
+	sales_metrics = {}
+	for app_id in sales_data:
+		total_units = 0
+		total_profit = 0.0
+		for date in sales_data[app_id]:
+			total_units += sales_data[app_id][date]["gross_units"]
+			total_profit += sales_data[app_id][date]["net_sales"]
+		sales_metrics[app_id] = (total_units, total_profit)
+	return sales_metrics
 
 def fetch_reviews() -> None:
 	current_sales = get_current_sales()
@@ -147,12 +175,8 @@ def write_file_json(filename : str, data : dict) -> None:
 
 if __name__ == "__main__":
 	try:
-		fetch_sales()
-		fetch_reviews()
-
-		schedule.every(60).minutes.do(fetch_sales)
-		schedule.every(60).minutes.do(fetch_reviews)
-		
+		main()
+		schedule.every(60).minutes.do(main)
 		while True:
 			schedule.run_pending()
 			time.sleep(15)
