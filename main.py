@@ -131,7 +131,7 @@ def get_changed_dates(watermark : str = "0") -> (list[str], int):
 	return [], watermark
 
 def get_api_key() -> str:
-	return read_file_line("api_key.txt")
+	return read_file_line("api_key.txt").replace("\n", "")
 
 def get_dates_watermark() -> str:
 	return read_file_line("watermark_changed_dates.txt")
